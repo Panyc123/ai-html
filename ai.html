@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI</title>
+    <style>
+        /* 页面基础样式 */
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 40px;
+            font-weight: 300;
+        }
+
+        /* 按钮容器 */
+        .container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        /* 不同按钮的颜色 */
+        .btn-dino { background-color: #ff7675; }
+        .btn-2048 { background-color: #74b9ff; }
+        .btn-calcu { background-color: #55efc4; color: #2d3436; }
+
+    </style>
+</head>
+<body>
+
+    <h1>Jaily</h1>
+
+    <div class="container">
+        <a href="https://ai.canons.dpdns.org/dino" class="btn btn-dino">Dino</a>
+        <a href="https://ai.canons.dpdns.org/2048" class="btn btn-2048">2048</a>
+        <a href="https://ai.canons.dpdns.org/calcu" class="btn btn-calcu">Calcu</a>
+    </div>
+
+</body>
+</html>
