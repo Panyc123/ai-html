@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Google Calculator</title>
+    <style>
+        :root {
+            --bg-color: #f7f9fc;
+            --display-bg: #f7f9fc;
+            --text-main: #1f1f1f;
+            /* 按钮颜色修改：数字键调整为灰色 */
+            --btn-num-bg: #eef1f6; 
+            --btn-num-text: #1f1f1f;
+            --btn-op-bg: #c2e7ff;
+            --btn-op-text: #041e49;
+            --btn-ac-bg: #c6ebd1;
+            --btn-ac-text: #0f522b;
+            --btn-eq-bg: #a8c7fa;
+            --btn-eq-text: #051e49;
+            --btn-sci-bg: #dfe3eb;
+            --btn-sci-text: #43474e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Product Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #cbd5e1;
+        }
+
+        /* 主容器 */
+        .calculator {
+            width: 100%;
+            max-width: 412px;
+            height: 850px;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            border-radius: 32px;
+            overflow: hidden;
+            box-shadow: 0 24px 48px rgba(0,0,0,0.16);
+            position: relative;
+        }
+
+        /* 独立滚动式顶部屏幕区 */
+        .display-container {
+            background-color: var(--display-bg);
+            flex: 1;
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            overflow: hidden;
+        }
+
+        /* 修复后的历史记录区域：可自适应向下滚动查看 */
+        .history-panel {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-right: 4px;
+            scrollbar-width: none;
+        }
+        .history-panel::-webkit-scrollbar { display: none; }
+        
+        .history-item {
+            text-align: right;
+            animation: fadeIn 0.25s ease-out;
+            cursor: pointer;
+            padding: 4px 0;
+            border-bottom: 1px dashed #e2e8f0; /* 添加弱分割线，方便识别多条记录 */
+        }
+        .history-item .expr { font-size: 1.1rem; color: #74777f; }
+        .history-item .res { font-size: 1.4rem; font-weight: bold; color: #43474e; margin-top: 2px;}
+
+        /* 当前输入行 */
+        .current-wrap {
+            margin-top: auto;
+            text-align: right;
+        }
+        .current-input {
+            font-size: 3.5rem;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .current-input::-webkit-scrollbar { display: none; }
+
+        .drag-handle-line {
+            height: 2px;
+            background-color: #dee2ec;
+            margin: 8px 0;
+        }
+
+        /* 键盘总容器：使用固定收缩比，保证永远显示全 */
+        .pad-container {
+            padding: 8px 16px 24px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: var(--bg-color);
+        }
+
+        .grid-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        /* 科学计算器扩展面板：优化高度动画，防止挤压 */
+        .scientific-extra {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            max-height: 0;
+            opacity: 0;
+            visibility: hidden;
+            transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s, visibility 0.2s;
+        }
+        .calculator.scientific-mode .scientific-extra {
+            max-height: 100px; /* 两行科学键的容纳高度 */
+            opacity: 1;
+            visibility: visible;
+            margin-bottom: 4px;
+        }
+
+        /* 按钮标准样式 */
+        .btn {
+            border: none;
+            outline: none;
+            height: 68px;
+            border-radius: 34px;
+            font-size: 1.6rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.1s, transform 0.05s;
+            background-color: var(--btn-num-bg);
+            color: var(--btn-num-text);
+        }
+        .btn:active {
+            filter: brightness(0.9);
+            transform: scale(0.96);
+        }
+
+        /* 顶部微标键 */
+        .btn-sm {
+            height: 44px;
+            font-size: 1.1rem;
+            background: transparent;
+            color: #43474e;
+        }
+
+        /* 颜色面板分类定义 */
+        .btn-ac { background-color: var(--btn-ac-bg); color: var(--btn-ac-text); font-weight: bold; }
+        .btn-op { background-color: var(--btn-op-bg); color: var(--btn-op-text); font-size: 1.8rem; }
+        .btn-eq { background-color: var(--btn-eq-bg); color: var(--btn-eq-text); font-size: 2rem; transition: all 0.2s; }
+        .btn-sci { background-color: var(--btn-sci-bg); color: var(--btn-sci-text); font-size: 1.1rem; font-weight: 500; height: 44px;}
+
+        /* 长按提示气泡 */
+        .toast {
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(31, 31, 31, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="calculator" id="calc">
+        <div class="toast" id="toast">模式切换</div>
+
+        <div class="display-container">
+            <div class="history-panel" id="history-panel">
+                </div>
+            <div class="drag-handle-line"></div>
+            <div class="current-wrap">
+                <div class="current-input" id="display">0</div>
+            </div>
+        </div>
+
+        <div class="pad-container">
+            <div class="grid-row">
+                <button class="btn btn-sm" onclick="inputOp('√')">√</button>
+                <button class="btn btn-sm" onclick="inputNum('π')">π</button>
+                <button class="btn btn-sm" onclick="inputOp('^')">^</button>
+                <button class="btn btn-sm" onclick="inputOp('!')">!</button>
+            </div>
+
+            <div class="scientific-extra">
+                <button class="btn btn-sci" onclick="inputSci('sin')">sin</button>
+                <button class="btn btn-sci" onclick="inputSci('cos')">cos</button>
+                <button class="btn btn-sci" onclick="inputSci('tan')">tan</button>
+                <button class="btn btn-sci" onclick="inputSci('ln')">ln</button>
+                <button class="btn btn-sci" onclick="inputSci('log')">log</button>
+                <button class="btn btn-sci" onclick="inputNum('e')">e</button>
+                <button class="btn btn-sci" onclick="showToast('已切换至弧度制 RAD')">RAD</button>
+                <button class="btn btn-sci" onclick="showToast('已切换至角度制 DEG')">DEG</button>
+            </div>
+
+            <div class="grid-row">
+                <button class="btn btn-ac" onclick="clearAll()">AC</button>
+                <button class="btn btn-op" onclick="inputBracket()">()</button>
+                <button class="btn btn-op" onclick="inputOp('%')">%</button>
+                <button class="btn btn-op" onclick="inputOp('÷')">÷</button>
+            </div>
+
+            <div class="grid-row">
+                <button class="btn" onclick="inputNum('7')">7</button>
+                <button class="btn" onclick="inputNum('8')">8</button>
+                <button class="btn" onclick="inputNum('9')">9</button>
+                <button class="btn btn-op" onclick="inputOp('×')">×</button>
+            </div>
+
+            <div class="grid-row">
+                <button class="btn" onclick="inputNum('4')">4</button>
+                <button class="btn" onclick="inputNum('5')">5</button>
+                <button class="btn" onclick="inputNum('6')">6</button>
+                <button class="btn btn-op" onclick="inputOp('−')">−</button>
+            </div>
+
+            <div class="grid-row">
+                <button class="btn" onclick="inputNum('1')">1</button>
+                <button class="btn" onclick="inputNum('2')">2</button>
+                <button class="btn" onclick="inputNum('3')">3</button>
+                <button class="btn btn-op" onclick="inputOp('+')">+</button>
+            </div>
+
+            <div class="grid-row">
+                <button class="btn" onclick="inputNum('0')">0</button>
+                <button class="btn" onclick="inputDot('.')">.</button>
+                <button class="btn" onclick="backspace()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/>
+                    </svg>
+                </button>
+                <button class="btn btn-eq" id="btn-equals">=</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const displayEl = document.getElementById('display');
+        const historyPanel = document.getElementById('history-panel');
+        const calcContainer = document.getElementById('calc');
+        const eqBtn = document.getElementById('btn-equals');
+        const toastEl = document.getElementById('toast');
+
+        let currentExpression = '0';
+        let isEvaluated = false;
+        let openBracketsCount = 0;
+
+        function updateDisplay() {
+            displayEl.innerText = currentExpression;
+            displayEl.scrollLeft = displayEl.scrollWidth;
+        }
+
+        function clearAll() {
+            currentExpression = '0';
+            openBracketsCount = 0;
+            isEvaluated = false;
+            updateDisplay();
+        }
+
+        function inputNum(num) {
+            if (currentExpression === '0' || isEvaluated) {
+                currentExpression = num;
+                isEvaluated = false;
+            } else {
+                currentExpression += num;
+            }
+            updateDisplay();
+        }
+
+        function inputDot() {
+            if (isEvaluated) {
+                currentExpression = '0.';
+                isEvaluated = false;
+                updateDisplay();
+                return;
+            }
+            const parts = currentExpression.split(/[\+\\−\×\÷\^]/);
+            const lastPart = parts[parts.length - 1];
+            if (!lastPart.includes('.')) {
+                currentExpression += '.';
+            }
+            updateDisplay();
+        }
+
+        function inputOp(op) {
+            if (isEvaluated) isEvaluated = false;
+            const lastChar = currentExpression.slice(-1);
+            
+            if (['+', '−', '×', '÷', '^'].includes(lastChar) && ['+', '−', '×', '÷', '^'].includes(op)) {
+                currentExpression = currentExpression.slice(0, -1) + op;
+            } else {
+                if (currentExpression === '0' && op === '−') {
+                    currentExpression = '-';
+                } else {
+                    currentExpression += op;
+                }
+            }
+            updateDisplay();
+        }
+
+        function inputBracket() {
+            if (isEvaluated) {
+                currentExpression = '(';
+                openBracketsCount = 1;
+                isEvaluated = false;
+                updateDisplay();
+                return;
+            }
+            const lastChar = currentExpression.slice(-1);
+            if (openBracketsCount > 0 && (/[0-9\)πe]/.test(lastChar))) {
+                currentExpression += ')';
+                openBracketsCount--;
+            } else {
+                if (currentExpression === '0') currentExpression = '';
+                currentExpression += '(';
+                openBracketsCount++;
+            }
+            updateDisplay();
+        }
+
+        function inputSci(fn) {
+            if (currentExpression === '0' || isEvaluated) {
+                currentExpression = fn + '(';
+                isEvaluated = false;
+            } else {
+                currentExpression += fn + '(';
+            }
+            openBracketsCount++;
+            updateDisplay();
+        }
+
+        function backspace() {
+            if (isEvaluated) {
+                clearAll();
+                return;
+            }
+            if (currentExpression.length > 1) {
+                const removed = currentExpression.slice(-1);
+                if (removed === '(') openBracketsCount--;
+                if (removed === ')') openBracketsCount++;
+                currentExpression = currentExpression.slice(0, -1);
+            } else {
+                currentExpression = '0';
+            }
+            updateDisplay();
+        }
+
+        function factorial(n) {
+            if (n < 0 || n > 170) return NaN; // 防溢出
+            if (n === 0 || n === 1) return 1;
+            let res = 1;
+            for (let i = 2; i <= n; i++) res *= i;
+            return res;
+        }
+
+        function calculate() {
+            let expr = currentExpression;
+            if (expr === '0' || isEvaluated) return;
+
+            while (openBracketsCount > 0) {
+                expr += ')';
+                openBracketsCount--;
+            }
+
+            const originalExpr = expr;
+
+            try {
+                // 转换符号
+                expr = expr.replace(/×/g, '*').replace(/−/g, '-').replace(/÷/g, '/');
+                expr = expr.replace(/π/g, 'Math.PI').replace(/e/g, 'Math.E');
+                expr = expr.replace(/√\(/g, 'Math.sqrt(');
+                expr = expr.replace(/sin\(/g, 'Math.sin(');
+                expr = expr.replace(/cos\(/g, 'Math.cos(');
+                expr = expr.replace(/tan\(/g, 'Math.tan(');
+                expr = expr.replace(/log\(/g, 'Math.log10(');
+                expr = expr.replace(/ln\(/g, 'Math.log(');
+                expr = expr.replace(/\^/g, '**');
+                expr = expr.replace(/(\d+)%/g, '($1/100)');
+
+                if (expr.includes('!')) {
+                    expr = expr.replace(/(\d+)!/g, (match, p1) => factorial(parseInt(p1)));
+                }
+
+                let result = new Function(`return ${expr}`)();
+
+                if (typeof result === 'number' && !isNaN(result)) {
+                    if (result.toString().includes('.') && result.toString().split('.')[1].length > 10) {
+                        result = parseFloat(result.toFixed(10)); // 处理浮点精度
+                    }
+                }
+
+                if (isNaN(result) || result === Infinity || result === -Infinity) throw new Error();
+
+                appendHistory(originalExpr, result);
+                currentExpression = result.toString();
+                isEvaluated = true;
+            } catch (error) {
+                currentExpression = '错误';
+                isEvaluated = true;
+            }
+            updateDisplay();
+        }
+
+        // 新增/优化历史记录生成逻辑
+        function appendHistory(expr, res) {
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item';
+            historyItem.innerHTML = `<div class="expr">${expr}</div><div class="res">${res}</div>`;
+            
+            // 点击历史记录可重新载入
+            historyItem.addEventListener('click', () => {
+                currentExpression = res.toString();
+                isEvaluated = false;
+                updateDisplay();
+            });
+
+            historyPanel.appendChild(historyItem);
+            // 每次生成新纪录，面板都会自动滚动至最底部，支持向上滑看以前的历史
+            historyPanel.scrollTop = historyPanel.scrollHeight;
+        }
+
+        // 弱提示弹窗
+        function showToast(msg) {
+            toastEl.innerText = msg;
+            toastEl.style.opacity = 1;
+            setTimeout(() => { toastEl.style.opacity = 0; }, 1800);
+        }
+
+        // --- 强化长按机制 ---
+        let pressTimer;
+        let isLongPress = false;
+
+        function toggleScientificMode() {
+            const isSci = calcContainer.classList.toggle('scientific-mode');
+            showToast(isSci ? "已展开高级科学计算器" : "已收回标准计算器");
+        }
+
+        function startPress(e) {
+            if (e.type === 'touchstart') e.preventDefault();
+            isLongPress = false;
+            
+            // 缩放压感反馈
+            eqBtn.style.transform = "scale(0.92)";
+
+            pressTimer = setTimeout(() => {
+                isLongPress = true;
+                toggleScientificMode();
+                if (window.navigator.vibrate) window.navigator.vibrate(50); // 震动反馈
+            }, 600); // 600ms即触发长按
+        }
+
+        function endPress() {
+            clearTimeout(pressTimer);
+            eqBtn.style.transform = "";
+            if (!isLongPress) {
+                calculate();
+            }
+        }
+
+        eqBtn.addEventListener('mousedown', startPress);
+        eqBtn.addEventListener('mouseup', endPress);
+        eqBtn.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+        eqBtn.addEventListener('touchstart', startPress, { passive: false });
+        eqBtn.addEventListener('touchend', endPress);
+    </script>
+</body>
+</html>

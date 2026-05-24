@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JS 谷歌小恐龙 (道具+作弊码版)</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f7f7f7; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        #gameWrapper { text-align: center; width: 100%; padding: 0 10px; box-sizing: border-box; }
+        canvas { background-color: #fff; border-bottom: 2px solid #535353; box-shadow: 0 10px 20px rgba(0,0,0,0.05); width: 100%; max-width: 800px; height: auto; touch-action: none; }
+        .controls { color: #888; font-size: 13px; margin-top: 15px; line-height: 1.8; }
+        .key { background: #eee; padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc; color: #333; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="gameWrapper">
+    <canvas id="gameCanvas" width="800" height="250"></canvas>
+    <div class="controls">
+        <p style="margin: 0;">电脑：<span class="key">空格/↑</span> 跳跃 | <span class="key">↓</span> 下蹲</p>
+        <p style="margin: 5px 0 0 0;">手机：<span class="key">轻触上半屏</span> 跳跃 | <span class="key">按住下半屏</span> 下蹲</p>
+       <p style="margin: 5px 0 0 0;">信息：<span class="key">制作人</span> Pan(Jaily)| <span class="key">创作</span> Gemini</p>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// 图片加载
+const imgDinoStand = new Image();
+imgDinoStand.crossOrigin = "anonymous"; 
+imgDinoStand.src = "https://ts1.tc.mm.bing.net/th/id/R-C.fcab2fcfa0ff60e668433b2e0264d92b?rik=XotyAOn%2btvymxw&riu=http%3a%2f%2fpic.hncj.com%2fup%2f2023-7%2f2023725102108223.png&ehk=4wKldp8YRj5pq%2b0%2blVnyz7Sb4mbPOqCT6PCQ3Jj35G0%3d&risl=&pid=ImgRaw&r=0";
+const imgDinoDuck = new Image(); imgDinoDuck.src = "dino_duck.png"; 
+const imgCactus = new Image(); imgCactus.src = "cactus.png"; 
+
+// 游戏状态变量
+let frames = 0; 
+let score = 0; 
+let isGameOver = false; 
+let obstacles = []; 
+let items = []; // 道具数组
+let nextSpawnTime = 0;
+let gameSpeed = 5.5; 
+const maxSpeed = 13; 
+const acceleration = 0.001;
+
+// 作弊码状态
+let keyBuffer = '';
+let godMode = false;
+
+// 恐龙对象
+const dino = {
+    x: 50, y: 210, width: 40, height: 44, 
+    hitboxWidth: 30, hitboxHeight: 38,
+    dy: 0, gravity: 0.6, jumpForce: -11, 
+    isJumping: false, isDucking: false,
+    
+    // 无敌状态计时器
+    invincibleTimer: 0, 
+
+    draw() {
+        // 如果处于无敌药水状态或上帝模式，角色半透明
+        if (this.invincibleTimer > 0 || godMode) {
+            ctx.globalAlpha = 0.5;
+        }
+
+        if (this.isDucking) {
+            ctx.fillStyle = '#535353';
+            ctx.fillRect(this.x, this.y + 22, 50, 24);
+        } else {
+            if (imgDinoStand.complete && imgDinoStand.naturalHeight !== 0) {
+                ctx.drawImage(imgDinoStand, this.x, this.y, this.width, this.height);
+            } else {
+                ctx.fillStyle = '#535353';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+        
+        ctx.globalAlpha = 1.0; // 恢复透明度
+    },
+    update() {
+        this.dy += this.gravity; 
+        this.y += this.dy;
+        if (this.y >= 206) { this.y = 206; this.dy = 0; this.isJumping = false; }
+        
+        // 更新无敌倒计时
+        if (this.invincibleTimer > 0) {
+            this.invincibleTimer--;
+        }
+    },
+    jump() { if (!this.isJumping) { this.dy = this.jumpForce; this.isJumping = true; this.isDucking = false; } },
+    duck(state) { if (!this.isJumping) { this.isDucking = state; } }
+};
+
+// 道具类：蓝色药水
+class Item {
+    constructor() {
+        this.x = canvas.width;
+        this.width = 15;
+        this.height = 30;
+        this.y = 215; // 放在地面偏上一点的位置
+    }
+    
+    draw() {
+        ctx.fillStyle = '#2196F3'; // 蓝色
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+    
+    update() {
+        this.x -= gameSpeed;
+    }
+}
+
+// 障碍物类
+class Obstacle {
+    constructor(type) {
+        this.type = type; this.x = canvas.width;
+        if (type === 0) { 
+            this.img = imgCactus; this.width = 20; this.height = 48; this.y = 250 - this.height; 
+            this.hitboxWidth = 16; this.hitboxHeight = 44;
+        } else { 
+            this.width = 40; this.height = 30;
+            const birdHeights = [140, 180, 210]; this.y = birdHeights[Math.floor(Math.random() * birdHeights.length)];
+            this.hitboxWidth = 36; this.hitboxHeight = 20;
+        }
+    }
+    
+    draw() {
+        if (this.type === 0) { 
+            if (this.img.complete && this.img.naturalHeight !== 0) {
+                ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+            } else {
+                ctx.fillStyle = '#4CAF50'; 
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        } else { 
+            ctx.save(); 
+            ctx.fillStyle = '#F44336'; 
+            ctx.strokeStyle = '#F44336';
+            ctx.lineWidth = 4;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y + this.height / 2);
+            ctx.lineTo(this.x + this.width, this.y + this.height / 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(this.x + 15, this.y + this.height / 2 - 10);
+            ctx.lineTo(this.x, this.y + this.height / 2);
+            ctx.lineTo(this.x + 15, this.y + this.height / 2 + 10);
+            ctx.stroke();
+            ctx.restore(); 
+        }
+    }
+    update() { this.x -= gameSpeed; }
+}
+
+// ---------------- 键盘监听与作弊码系统 ----------------
+document.addEventListener('keydown', (e) => {
+    // 监听作弊码输入
+    if (e.key && e.key.length === 1) { // 过滤掉 Shift, Control 等按键
+        keyBuffer += e.key.toLowerCase();
+        // 保持缓冲区长度为 4
+        if (keyBuffer.length > 4) {
+            keyBuffer = keyBuffer.slice(-4);
+        }
+        // 验证作弊码
+        if (keyBuffer === 'dino') {
+            godMode = !godMode; // 切换上帝模式状态
+            keyBuffer = '';     // 清空缓冲区
+        }
+    }
+
+    if (e.code === 'Space' || e.code === 'ArrowUp') { 
+        if (isGameOver) resetGame(); else dino.jump(); 
+    }
+    if (e.code === 'ArrowDown') { dino.duck(true); }
+});
+
+document.addEventListener('keyup', (e) => { 
+    if (e.code === 'ArrowDown') { dino.duck(false); } 
+});
+
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault(); if (isGameOver) { resetGame(); return; }
+    const touchY = e.touches[0].clientY; const screenHeight = window.innerHeight;
+    if (touchY > screenHeight / 2) { dino.duck(true); } else { dino.jump(); }
+}, { passive: false });
+canvas.addEventListener('touchend', (e) => { e.preventDefault(); dino.duck(false); }, { passive: false });
+
+function resetGame() { 
+    obstacles = []; 
+    items = [];
+    score = 0; 
+    frames = 0; 
+    gameSpeed = 5.5; 
+    isGameOver = false; 
+    nextSpawnTime = 0; 
+    dino.y = 206; 
+    dino.dy = 0; 
+    dino.invincibleTimer = 0; // 重置无敌时间
+    godMode = false;          // 重置上帝模式
+    gameLoop(); 
+}
+
+// ---------------- 处理道具 ----------------
+function handleItems() {
+    // 10 帧等于 1 分，100 分即为 1000 帧。每过 1000 帧生成一个道具
+    if (score > 0 && score % 1000 === 0) {
+        items.push(new Item());
+    }
+
+    for (let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        item.update();
+        item.draw();
+
+        // 检测恐龙是否吃到了道具
+        if (dino.x < item.x + item.width &&
+            dino.x + dino.width > item.x &&
+            dino.y < item.y + item.height &&
+            dino.y + dino.height > item.y) {
+            
+            // 吃掉道具，获得 200 帧的无敌时间 (相当于20分)
+            dino.invincibleTimer = 200; 
+            items.splice(i, 1);
+            continue;
+        }
+
+        // 移出屏幕的道具进行回收
+        if (item.x + item.width < 0) {
+            items.splice(i, 1);
+        }
+    }
+}
+
+// ---------------- 处理障碍物 ----------------
+function handleObstacles() {
+    if (frames >= nextSpawnTime) {
+        let type = (score > 300 && Math.random() < 0.3) ? 1 : 0;
+        obstacles.push(new Obstacle(type));
+        nextSpawnTime = frames + 50 + Math.floor(Math.random() * 70);
+    }
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        let obs = obstacles[i]; obs.update(); obs.draw();
+
+        let dHitboxX = dino.x + (dino.width - dino.hitboxWidth) / 2;
+        let dHitboxY, dHitboxW, dHitboxH;
+
+        if (dino.isDucking) {
+            dHitboxX = dino.x; dHitboxY = dino.y + 22; dHitboxW = 50; dHitboxH = 24;
+        } else {
+            dHitboxY = dino.y + (dino.height - dino.hitboxHeight) / 2; dHitboxW = dino.hitboxWidth; dHitboxH = dino.hitboxHeight;
+        }
+
+        const oHitboxX = obs.x + (obs.width - obs.hitboxWidth) / 2;
+        const oHitboxY = obs.y + (obs.height - obs.hitboxHeight) / 2;
+
+        // 如果没有吃到药水，且没有开启上帝模式，才进行死亡检测
+        if (dino.invincibleTimer <= 0 && !godMode) {
+            if (dHitboxX < oHitboxX + obs.hitboxWidth && dHitboxX + dHitboxW > oHitboxX && dHitboxY < oHitboxY + obs.hitboxHeight && dHitboxY + dHitboxH > oHitboxY) {
+                isGameOver = true;
+            }
+        }
+        
+        if (obs.x + obs.width < 0) { obstacles.splice(i, 1); }
+    }
+}
+
+function gameLoop() {
+    if (isGameOver) {
+        ctx.fillStyle = '#535353'; ctx.font = 'bold 32px Arial'; ctx.fillText('GAME OVER', canvas.width / 2 - 95, canvas.height / 2);
+        ctx.font = '18px Arial'; ctx.fillText('轻触屏幕 / 空格键 重新开始', canvas.width / 2 - 110, canvas.height / 2 + 40);
+        return; 
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    dino.update(); 
+    dino.draw(); 
+    handleItems();       // 处理道具逻辑
+    handleObstacles();   // 处理障碍物逻辑
+    
+    if (gameSpeed < maxSpeed) { gameSpeed += acceleration; }
+    score++;
+    
+    // UI 文字显示
+    ctx.fillStyle = '#535353'; 
+    ctx.font = 'bold 20px Courier New'; 
+    ctx.fillText(`SCORE: ${Math.floor(score / 10).toString().padStart(5, '0')}`, canvas.width - 180, 40);
+    
+    // 如果处于特殊状态，在屏幕上方给予提示
+    if (godMode) {
+        ctx.fillStyle = '#F44336';
+        ctx.fillText(`[ GOD MODE ON ]`, 20, 40);
+    } else if (dino.invincibleTimer > 0) {
+        ctx.fillStyle = '#2196F3';
+        ctx.fillText(`[ INVINCIBLE: ${Math.ceil(dino.invincibleTimer / 10)} ]`, 20, 40);
+    }
+
+    frames++; 
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+
+</script>
+
+</body>
+</html>
